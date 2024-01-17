@@ -1,0 +1,63 @@
+name: 'Terraform State Deployment'
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_account:
+        description: 'Select AWS Account'
+        required: true
+        type: choice
+        options:
+          - 'dev'
+          - 'prod'
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: 'Terraform deployment'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.aws_account }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials for ddqc-dev
+      if: github.event.inputs.aws_account == 'dev'
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.DEV_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.DEV_SECRET_ACCESS_KEY }}
+        aws-region: 'eu-west-1'
+
+    - name: Configure AWS Credentials for prod
+      if: github.event.inputs.aws_account == 'prod'
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.PROD_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.PROD_SECRET_ACCESS_KEY }}
+        aws-region: 'eu-west-1'
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v1
+
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./tf-state
+  
+    - name: Terraform Validate
+      run: terraform validate
+      working-directory: ./tf-state
+
+    - name: Terraform Plan
+      run: terraform plan -out=tfplan -var-file="configs/${{ github.event.inputs.aws_account }}.tfvars"
+      working-directory: ./tf-state
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve tfplan
+      working-directory: ./tf-state
